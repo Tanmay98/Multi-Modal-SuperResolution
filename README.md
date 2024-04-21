@@ -1,5 +1,5 @@
 ## Integrating Text guided Multimodal attention for Image Super Resolution
-This work is the end-semester term project for MM-8805. 
+This work is the end-semester term project for MM-805. 
 
 ### Download the dataset
 Please download DIV2K dataset from [https://data.vision.ee.ethz.ch/cvl/DIV2K/]
