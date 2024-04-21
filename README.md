@@ -8,7 +8,7 @@ Please download DIV2K dataset from [https://data.vision.ee.ethz.ch/cvl/DIV2K/]
 Run all cells of `create_desc.ipynb`. Note: Please change paths to your respective directories.
 
 ### Creating Textual Embeddings
-Run all cells of `create_text_embed.ipynb`. Note: Note: Please change paths to your respective directories.
+Run all cells of `create_text_embed.ipynb`. Note: Please change paths to your respective directories.
 
 ### Train model
 Run `python train.py` 
