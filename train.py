@@ -1,110 +1,54 @@
-import argparse
-import os
-
 from dataset import Dataset
+from torchvision import transforms
+import torch.optim as optim
+
 from edar import EDAR
 
 import torch
 from torch import nn
 from torch.utils.data.dataloader import DataLoader
-import torch.backends.cudnn as cudnn
-import torch.optim as optim
-from torchvision import transforms
-from torchvision.models.vgg import vgg16
 
 from utils import AverageMeter
 from tqdm import tqdm
 
-if __name__ == '__main__':
-    '''
-    It enables benchmark mode in cudnn.
-    benchmark mode is good whenever your input sizes for your network do not vary. 
-    This way, cudnn will look for the optimal set of algorithms for that particular configuration (which takes some time). 
-    This usually leads to faster runtime.
-    But if your input sizes changes at each iteration, 
-    then cudnn will benchmark every time a new size appears, 
-    possibly leading to worse runtime performances.
-    '''
-    cudnn.benchmark = True
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+# Define root path to high resolution DIV2k dataset
+images_dir = '/Users/akhilbaweja/Desktop/Winter Assignments/805/project/data/DIV2K_valid_HR'
+patch_size, jpeg_quality = 48, 40
+transforms_train = transforms.Compose([transforms.ToTensor()])
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--images_dir', type=str, required=True)
-    parser.add_argument('--outputs_dir', type=str, required=True)
-    parser.add_argument('--jpeg_quality', type=int, default=40)
-    parser.add_argument('--patch_size', type=int, default=48)
-    parser.add_argument('--batch_size', type=int, default=16)
-    parser.add_argument('--num_epochs', type=int, default=400)
-    parser.add_argument('--lr', type=float, default=1e-4)
-    parser.add_argument('--threads', type=int, default=1)
-    parser.add_argument('--seed', type=int, default=123)
-    parser.add_argument('--resume', default='', type=str, metavar='PATH',
-                        help='path to latest checkpoint (default: none)')
+# Load dataloader class
+dataset = Dataset(images_dir, patch_size, jpeg_quality, transforms=transforms_train)
 
-    opt = parser.parse_args()
+# Define available device for train
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    if not os.path.exists(opt.outputs_dir):
-        os.makedirs(opt.outputs_dir)
+# Loading model
+model = EDAR().to(device)
+dataloader = DataLoader(dataset=dataset,
+                        batch_size=2,
+                        shuffle=True,
+                        pin_memory=True,
+                        drop_last=True)
 
-    torch.manual_seed(opt.seed)
+# Define model paramters and loss function
+lr = 1e-4
+num_epochs = 100
+criterion = nn.L1Loss()
+optimizer = optim.Adam(model.parameters(), lr=lr)
 
-    transforms_train = transforms.Compose([transforms.ToTensor()])
-    model = EDAR().to(device)
-    print("Model loaded")
+for epoch in range(num_epochs):
+    for i, data in enumerate(dataloader):
+        inputs, labels = data
+        inputs = inputs.to(device)
+        labels = labels.to(device)
+        #print(inputs.size(), labels.size())
+        dummy_text_emb1 = torch.ones(1, 512, device=device)
+        dummy_text_emb2 = torch.ones(1, 512, device=device)
+        dummy_text_emb = torch.stack((dummy_text_emb1, dummy_text_emb2))
 
-    if opt.resume:
-        if os.path.isfile(opt.resume):
-            state_dict = model.state_dict()
-            for n, p in torch.load(opt.resume, map_location=lambda storage, loc: storage).items():
-                if n in state_dict.keys():
-                    state_dict[n].copy_(p)
-                else:
-                    raise KeyError(n)
-
-    criterion = nn.L1Loss()
-    optimizer = optim.Adam(model.parameters(), lr=opt.lr)
-    print("Data processing started")
-    
-    dataset = Dataset(opt.images_dir, opt.patch_size, opt.jpeg_quality,transforms=transforms_train)
-    dataloader = DataLoader(dataset=dataset,
-                            batch_size=opt.batch_size,
-                            shuffle=True,
-                            num_workers=opt.threads,
-                            pin_memory=True,
-                            drop_last=True)
-    print("Data loading completed")
-    #vgg = vgg16(pretrained=True).cuda()
-    #loss_network = nn.Sequential(*list(vgg.features)[:31]).eval()
-#     for param in loss_network.parameters():
-#         param.requires_grad = False
-
-    for epoch in range(opt.num_epochs):
-        epoch_losses = AverageMeter()
-        print("Length of the dataset is", len(dataset))
-        with tqdm(total=(len(dataset) - len(dataset) % opt.batch_size)) as _tqdm:
-            _tqdm.set_description('epoch: {}/{}'.format(epoch + 1, opt.num_epochs))
-            for data in dataloader:
-                inputs, labels = data
-                inputs = inputs.to(device)
-                labels = labels.to(device)
-                #print(inputs.size(), labels.size())
-
-                outs = model(inputs)
-
-                loss = criterion(outs, labels)
-                #perception_loss = criterion(loss_network(outs), loss_network(labels))
-
-                #loss = loss + perception_loss*0.06
-
-                epoch_losses.update(loss.item(), len(inputs))
-
-                optimizer.zero_grad()
-
-                loss.backward()
-                optimizer.step()
-
-                _tqdm.set_postfix(loss='{:.6f}'.format(epoch_losses.avg))
-                _tqdm.update(len(inputs))
-
-        torch.save(model.state_dict(), os.path.join(opt.outputs_dir, '{}_epoch_{}.pth'.format("EDAR_", epoch)))
-
+        optimizer.zero_grad()
+        outs = model(inputs, dummy_text_emb)
+        loss = criterion(outs, labels)
+        print(f'Batch {i}: ', loss.item())
+        loss.backward()
+        optimizer.step()
